@@ -1,4 +1,10 @@
+import 'dotenv/config'
 import express, { Request, Response } from "express";
+import { Logtail } from "@logtail/node";
+if(!process.env.LOGTAIL_TOKEN) {
+  throw new Error("You must configure LOGTAIL_TOKEN")
+}
+const logtail = new Logtail(process.env.LOGTAIL_TOKEN!);
 
 const app = express();
 
@@ -29,39 +35,54 @@ app.get("/", (_req: Request, res: Response) => {
 
 /**
  * POST /csp-report
- * Receives Content Security Policy violation reports
  */
-app.post("/csp-report", (req: Request, res: Response) => {
+app.post("/csp-report", async (req: Request, res: Response) => {
   const body = req.body;
 
   if (!body) {
     return res.status(400).send("No report body received");
   }
 
-  // Legacy format: { "csp-report": { ... } }
-  if (body["csp-report"]) {
-    console.log("Legacy CSP Report:");
-    console.dir(body["csp-report"], { depth: null });
+  try {
+    let logPayload: any;
+
+    // Legacy format
+    if (body["csp-report"]) {
+      logPayload = {
+        type: "legacy",
+        report: body["csp-report"]
+      };
+    }
+
+    // Modern Reporting API format
+    else if (Array.isArray(body)) {
+      logPayload = {
+        type: "modern",
+        reports: body
+      };
+    }
+
+    // Fallback
+    else {
+      logPayload = {
+        type: "unknown",
+        raw: body
+      };
+    }
+
+    await logtail.info(process.env.NODE_ENV==="production" ? "CSP violation received" : "TEST CSP violation received", logPayload);
+
+    // Flush logs before serverless function exits
+    await logtail.flush();
+
+  } catch (err) {
+    console.error("Logtail error:", err);
   }
 
-  // Modern Reporting API format: [ { type, body, ... } ]
-  else if (Array.isArray(body)) {
-    console.log("Modern CSP Report(s):");
-    body.forEach((report, i) => {
-      console.log(`Report ${i + 1}:`);
-      console.dir(report, { depth: null });
-    });
-  }
-
-  // Fallback
-  else {
-    console.log("Unknown report format:");
-    console.dir(body, { depth: null });
-  }
-
-  // CSP endpoints should return 204 No Content
+  // CSP endpoints should return 204
   res.status(204).end();
 });
+
 
 const PORT = process.env.PORT || 3000;
 
