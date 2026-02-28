@@ -14,6 +14,20 @@ app.use(
 );
 
 /**
+ * GET /
+ * Basic landing route
+ */
+app.get("/", (_req: Request, res: Response) => {
+  res.status(200).json({
+    service: "CSP Report Collector",
+    status: "ok",
+    endpoints: {
+      report: "POST /csp-report"
+    }
+  });
+});
+
+/**
  * POST /csp-report
  * Receives Content Security Policy violation reports
  */
